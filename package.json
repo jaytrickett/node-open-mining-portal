@@ -12,9 +12,9 @@
         "litecoin",
         "scrypt"
     ],
-    "homepage": "https://github.com/jaytrickett/node-open-mining-portal",
+    "homepage": "https://github.com/jaytrickett/poolio",
     "bugs": {
-        "url": "https://github.com/jaytrickett/node-open-mining-portal/issues"
+        "url": "https://github.com/jaytrickett/poolio/issues"
     },
     "license": "GPL-2.0",
     "author": "Matthew Little",
@@ -31,7 +31,7 @@
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/jaytrickett/node-open-mining-portal.git"
+        "url": "https://github.com/jaytrickett/poolio.git"
     },
     "dependencies": {
         "async": "^2.5.0",
@@ -48,7 +48,7 @@
         "nonce": "^1.0.4",
         "redis": "^2.7.1",
         "request": "^2.83.0",
-        "stratum-pool": "git://github.com/jaytrickett/node-stratum-pool.git",
+        "stratum-pool": "git://github.com/jaytrickett/startum.git",
         "winston": "^3.0.0-rc1",
         "winston-daily-rotate-file": "^2.0.0-rc.2"
     },
