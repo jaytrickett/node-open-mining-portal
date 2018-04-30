@@ -42,7 +42,9 @@ module.exports = function () {
         'workers.html': 'workers',
         'api.html': 'api',
         'admin.html': 'admin',
-        'mining_key.html': 'mining_key'
+        'mining_key.html': 'mining_key',
+        'miner_stats.html': 'miner_stats',
+        'payments.html': 'payments'
     };
 
     var pageTemplates = {};
@@ -95,12 +97,18 @@ module.exports = function () {
 
 
     //If an html file was changed reload it
-    watch('website', function (evt, filename) {
-        var basename = path.basename(filename);
-        if (basename in pageFiles) {
-            console.log(filename);
+    /* requires node-watch 0.5.0 or newer */
+    watch(['./website', './website/pages'], function(evt, filename){
+        var basename;
+        // support older versions of node-watch automatically
+        if (!filename && evt)
+            basename = path.basename(evt);
+        else
+            basename = path.basename(filename);
+        
+        if (basename in pageFiles){
             readPageFiles([basename]);
-            logger.debug('Reloaded file %s', basename);
+            logger.special(logSystem, 'Server', 'Reloaded file ' + basename);
         }
     });
 
@@ -216,7 +224,54 @@ module.exports = function () {
         }
     };
 
-    var route = function (req, res, next) {
+ 
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+	var route = function (req, res, next) {
         var pageId = req.params.page || '';
         if (pageId in indexesProcessed) {
             res.header('Content-Type', 'text/html');
@@ -228,7 +283,8 @@ module.exports = function () {
     };
 
 
-    var app = express();
+ 
+	var app = express();
 
 
     app.use(bodyParser.json());
@@ -246,7 +302,11 @@ module.exports = function () {
         res.end(keyScriptProcessed);
     });
 
-    app.get('/:page', route);
+
+	
+	
+	
+	app.get('/:page', route);
     app.get('/', route);
 
     app.get('/api/:method', function (req, res, next) {
@@ -277,7 +337,19 @@ module.exports = function () {
     });
 
     try {
-        app.listen(portalConfig.website.port, portalConfig.website.host, function () {
+
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		
+		app.listen(portalConfig.website.port, portalConfig.website.host, function () {
             logger.info('Website started on %s:%s', portalConfig.website.host,portalConfig.website.port);
         });
     }
