@@ -106,6 +106,7 @@
                     <div><i class="fa fa-rocket"></i><span id="statsWorkers{{=pool}}">{{=it.stats.pools[pool].workerCount}}</span> Workers</div>
                     <div><i class="fa fa-tachometer"></i><span id="statsHashrate{{=pool}}">{{=it.stats.pools[pool].hashrateString}}</span> (Now)</div>
 					<div><i class="fa fa-tachometer"></i><span id="statsHashrateAvg{{=pool}}">...</span> (Avg)</div>
+					<div><i class="fa fa-gavel"></i>Luck <span id="statsLuckDays{{=pool}}">{{=it.stats.pools[pool].luckDays}}</span> Days</div>
                 </div>
             </div>
         </div>
