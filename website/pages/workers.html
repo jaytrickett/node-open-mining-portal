@@ -66,7 +66,7 @@ function searchKeyPress(e)
             {{=capitalizeFirstLetter(it.stats.pools[pool].name)}} Top Miners &nbsp;&nbsp;
 			<small><i class="fa fa-users"></i> <span id="statsMiners{{=pool}}">{{=it.stats.pools[pool].minerCount}}</span> Miners &nbsp;&nbsp;
 			<i class="fa fa-rocket"></i> <span id="statsWorkers{{=pool}}">{{=it.stats.pools[pool].workerCount}}</span> Workers &nbsp;&nbsp;
-			<i class="fa fa-cog"></i> <span id="statsWorkers{{=pool}}">{{=it.stats.pools[pool].shareCount}}</span> Shares </small>
+			<i class="fa fa-cog"></i> <span id="statsWorkers{{=pool}}">{{=Math.floor(it.stats.pools[pool].shareCount)}}</span> Shares </small>
 		</div>
         <div class="poolMinerTable">
             <table class="pure-table">
