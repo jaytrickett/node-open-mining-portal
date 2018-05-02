@@ -4,6 +4,10 @@ var os = require('os');
 var cluster = require('cluster');
 
 var async = require('async');
+var extend = require('extend');
+
+var redis = require('redis');
+
 
 var CliListener = require('./libs/cliListener.js');
 var PoolWorker = require('./libs/poolWorker.js');
@@ -62,7 +66,6 @@ catch (e) {
     }
 }
 
-
 if (cluster.isWorker) {
 
     switch (process.env.workerType) {
@@ -75,9 +78,9 @@ if (cluster.isWorker) {
         case 'website':
             new Website();
             break;
-//        case 'profitSwitch':
-//            new ProfitSwitch();
-//            break;
+        case 'profitSwitch':
+            new ProfitSwitch();
+            break;
     }
 
     return;
@@ -152,15 +155,14 @@ var buildPoolConfigs = function () {
             return;
         }
 
-        for (var option in portalConfig.defaultPoolConfigs) {
-            if (!(option in poolOptions)) {
+        for (var option in portalConfig.defaultPoolConfigs){
+            if (!(option in poolOptions)){
                 var toCloneOption = portalConfig.defaultPoolConfigs[option];
                 var clonedOption = {};
-                if (toCloneOption.constructor === Object) {
-                    Object.assign(clonedOption, toCloneOption);
-                } else {
+                if (toCloneOption.constructor === Object)
+                    extend(true, clonedOption, toCloneOption);
+                else
                     clonedOption = toCloneOption;
-                }
                 poolOptions[option] = clonedOption;
             }
         }
@@ -177,15 +179,36 @@ var buildPoolConfigs = function () {
     return configs;
 };
 
+function roundTo(n, digits) {
+    if (digits === undefined) {
+        digits = 0;
+    }
+    var multiplicator = Math.pow(10, digits);
+    n = parseFloat((n * multiplicator).toFixed(11));
+    var test =(Math.round(n) / multiplicator);
+    return +(test.toFixed(digits));
+}
 
-var spawnPoolWorkers = function () {
+var _lastStartTimes = [];
+var _lastShareTimes = [];
 
-    Object.keys(poolConfigs).forEach(function (coin) {
-        var p = poolConfigs[coin];
+var spawnPoolWorkers = function(){
 
-        if (!Array.isArray(p.daemons) || p.daemons.length < 1) {
-            logger.error('[%s] No daemons configured so a pool cannot be started for this coin.', coin);
+    var redisConfig;
+    var connection;
+    
+    Object.keys(poolConfigs).forEach(function(coin){
+        var pcfg = poolConfigs[coin];
+        if (!Array.isArray(pcfg.daemons) || pcfg.daemons.length < 1){
+            logger.error('Master', coin, 'No daemons configured so a pool cannot be started for this coin.');
             delete poolConfigs[coin];
+        } else if (!connection) {
+            redisConfig = pcfg.redis;
+            connection = redis.createClient(redisConfig.port, redisConfig.host);
+            connection.on('ready', function(){
+                logger.debug('PPLNT', coin, 'TimeShare processing setup with redis (' + redisConfig.host +
+                    ':' + redisConfig.port  + ')');
+            });
         }
     });
 
@@ -198,15 +221,12 @@ var spawnPoolWorkers = function () {
     var serializedConfigs = JSON.stringify(poolConfigs);
 
     var numForks = (function () {
-        if (!portalConfig.clustering || !portalConfig.clustering.enabled) {
+        if (!portalConfig.clustering || !portalConfig.clustering.enabled)
             return 1;
-        }
-        if (portalConfig.clustering.forks === 'auto') {
+        if (portalConfig.clustering.forks === 'auto')
             return os.cpus().length;
-        }
-        if (!portalConfig.clustering.forks || isNaN(portalConfig.clustering.forks)) {
+        if (!portalConfig.clustering.forks || isNaN(portalConfig.clustering.forks)) 
             return 1;
-        }
         return portalConfig.clustering.forks;
     })();
 
@@ -235,6 +255,62 @@ var spawnPoolWorkers = function () {
                             cluster.workers[id].send({type: 'banIP', ip: msg.ip});
                         }
                     });
+                    break;
+                case 'shareTrack':
+                    // pplnt time share tracking of workers
+                    if (msg.isValidShare && !msg.isValidBlock) {
+                        var now = Date.now();
+                        var lastShareTime = now;
+                        var lastStartTime = now;
+                        var workerAddress = msg.data.worker.split('.')[0];
+                        
+                        // if needed, initialize PPLNT objects for coin
+                        if (!_lastShareTimes[msg.coin]) {
+                            _lastShareTimes[msg.coin] = {};
+                        }
+                        if (!_lastStartTimes[msg.coin]) {
+                            _lastStartTimes[msg.coin] = {};
+                        }
+                        
+                        // did they just join in this round?
+                        if (!_lastShareTimes[msg.coin][workerAddress] || !_lastStartTimes[msg.coin][workerAddress]) {
+                            _lastShareTimes[msg.coin][workerAddress] = now;
+                            _lastStartTimes[msg.coin][workerAddress] = now;
+                            logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+' joined.');
+                        }
+                        // grab last times from memory objects
+                        if (_lastShareTimes[msg.coin][workerAddress] != null && _lastShareTimes[msg.coin][workerAddress] > 0) {
+                            lastShareTime = _lastShareTimes[msg.coin][workerAddress];
+                            lastStartTime = _lastStartTimes[msg.coin][workerAddress];
+                        }
+                        
+                        var redisCommands = [];
+                        
+                        // if its been less than 15 minutes since last share was submitted
+                        var timeChangeSec = roundTo(Math.max(now - lastShareTime, 0) / 1000, 4);
+                        //var timeChangeTotal = roundTo(Math.max(now - lastStartTime, 0) / 1000, 4);
+                        if (timeChangeSec < 900) {
+                            // loyal miner keeps mining :)
+                            redisCommands.push(['hincrbyfloat', msg.coin + ':shares:timesCurrent', workerAddress + "." + poolConfigs[msg.coin].poolId, timeChangeSec]);                            
+                            //logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+':{totalTimeSec:'+timeChangeTotal+', timeChangeSec:'+timeChangeSec+'}');
+                            connection.multi(redisCommands).exec(function(err, replies){
+                                if (err)
+                                    logger.error('PPLNT', msg.coin, 'Thread '+msg.thread, 'Error with time share processor call to redis ' + JSON.stringify(err));
+                            });
+                        } else {
+                            // they just re-joined the pool
+                            _lastStartTimes[workerAddress] = now;
+                            logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+' re-joined.');
+                        }
+                        
+                        // track last time share
+                        _lastShareTimes[msg.coin][workerAddress] = now;
+                    }
+                    if (msg.isValidBlock) {
+                        // reset pplnt share times for next round
+                        _lastShareTimes[msg.coin] = {};
+                        _lastStartTimes[msg.coin] = {};
+                    }
                     break;
             }
         });
