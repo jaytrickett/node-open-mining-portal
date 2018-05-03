@@ -7,7 +7,9 @@ var async = require('async');
 var Stratum = require('stratum-pool');
 var util = require('stratum-pool/lib/util.js');
 
+
 const BigNumber = require('bignumber.js');
+
 const loggerFactory = require('./logger.js');
 
 
@@ -27,20 +29,21 @@ module.exports = function () {
             poolOptions.paymentProcessing.enabled)
             enabledPools.push(coin);
             logger.info("Enabled %s for payment processing", coin)
-        
     });
 
-    async.filter(enabledPools, function(coin, callback){
-        SetupForPool(poolConfigs[coin], function(setupResults){
+    async.filter(enabledPools, function (coin, callback) {
+        SetupForPool(poolConfigs[coin], function (setupResults) {
+            logger.debug("Processing processor initialized. Setup results %s", setupResults);
             callback(null, setupResults);
         });
-    }, function(err, results){
-        results.forEach(function(coin){
+    }, function (err, coins) {
+        if (err) {
+            logger.error('Error processing enabled pools in the config') // TODO: ASYNC LIB was updated, need to report a better error
+        } else {
+            coins.forEach(function (coin) {
 
-            var poolOptions = poolConfigs[coin];
-            var processingConfig = poolOptions.paymentProcessing;
-            var logSystem = 'Payments';
-            var logComponent = coin;
+                var poolOptions = poolConfigs[coin];
+                var processingConfig = poolOptions.paymentProcessing;
 
                 logger.info('Payment processing setup to run every %s second(s) with daemon (%s@%s:%s) and redis (%s:%s)',
                     processingConfig.paymentInterval,
@@ -50,12 +53,11 @@ module.exports = function () {
                     poolOptions.redis.host,
                     poolOptions.redis.port);
             });
-        });
-     };
+        }
+    });
+};
 
 function SetupForPool(poolOptions, setupFinished){
-
-
     var coin = poolOptions.coin.name;
     const logger = loggerFactory.getLogger('PaymentProcessor', coin);
 
@@ -63,12 +65,10 @@ function SetupForPool(poolOptions, setupFinished){
 
     var logSystem = 'Payments';
     var logComponent = coin;
-
     var opidCount = 0;
     var opids = [];
 
 	var daemon = new Stratum.daemon.interface([processingConfig.daemon], loggerFactory.getLogger('CoinDaemon', coin));
-    var getMarketStats = poolOptions.coin.getMarketStats === true;
     var redisClient = redis.createClient(poolOptions.redis.port, poolOptions.redis.host);
 
     var minPayment;
@@ -96,7 +96,6 @@ function SetupForPool(poolOptions, setupFinished){
                 }
             }, true);
         },
-
 		function (callback) {
             daemon.cmd('getbalance', [], function (result) {
                 var wasICaught = false;
@@ -148,7 +147,7 @@ function SetupForPool(poolOptions, setupFinished){
         daemon.cmd('getmininginfo', params,
             function (result) {                
                 if (!result || result.error || result[0].error || !result[0].response) {
-                    logger.error(logSystem, logComponent, 'Error with RPC call getmininginfo '+JSON.stringify(result[0].error));
+                    logger.error('Error with RPC call getmininginfo '+JSON.stringify);
                     return;
                 }
                 
@@ -165,10 +164,10 @@ function SetupForPool(poolOptions, setupFinished){
                     finalRedisCommands.push(['hset', coin + ':stats', 'networkSols', result[0].response.networkhashps]);
                 }
 
-                daemon.cmd('getnetworkinfo', params,
+                daemon.cmd('getinfo', params,
                     function (result) {
                         if (!result || result.error || result[0].error || !result[0].response) {
-                            logger.error(logSystem, logComponent, 'Error with RPC call getnetworkinfo '+JSON.stringify(result[0].error));
+                            logger.error('Error with RPC call getnetworkinfo '+JSON.stringify(result[0].error));
                             return;
                         }
                         
@@ -178,9 +177,7 @@ function SetupForPool(poolOptions, setupFinished){
                         if (result[0].response.version !== null) {
                             finalRedisCommands.push(['hset', coin + ':stats', 'networkVersion', result[0].response.version]);
                         }
-                        if (result[0].response.subversion !== null) {
-                            finalRedisCommands.push(['hset', coin + ':stats', 'networkSubVersion', result[0].response.subversion]);
-                        }
+                        
                         if (result[0].response.protocolversion !== null) {
                             finalRedisCommands.push(['hset', coin + ':stats', 'networkProtocolVersion', result[0].response.protocolversion]);
                         }
@@ -190,14 +187,14 @@ function SetupForPool(poolOptions, setupFinished){
 
                         redisClient.multi(finalRedisCommands).exec(function(error, results){
                             if (error){
-                                logger.error(logSystem, logComponent, 'Error with redis during call to cacheNetworkStats() ' + JSON.stringify(error));
-                                return;
-                            }
+                                logger.error('Error with redis during call to cacheNetworkStats() ' + JSON.stringify(error));
+                                return;      }
                         });
-					}
-				);
-			});
-		}
+                    }
+                );
+            }
+        );
+    }
  // network stats caching every 58 seconds
     var stats_interval = 58 * 1000;
     var statsInterval = setInterval(function() {
@@ -262,11 +259,88 @@ function SetupForPool(poolOptions, setupFinished){
                         };
                     });
 
-                    logger.debug("Prepared info basic info about payments");
+                    logger.debug("Prepared basic info about payments");
                     logger.silly("workers = %s", JSON.stringify(workers));
                     logger.silly("rounds = %s", JSON.stringify(rounds));
                     logger.debug("Workers count: %s Rounds: %", Object.keys(workers).length, rounds.length);
+                    /* sort rounds by block hieght to pay in order */
+                    rounds.sort(function(a, b) {
+                        return a.height - b.height;
+                    });
+                    // find duplicate blocks by height
+                    // this can happen when two or more solutions are submitted at the same block height
+                    var duplicateFound = false;
+                    for (var i = 0; i < rounds.length; i++) {
+                        if (checkForDuplicateBlockHeight(rounds, rounds[i].height) === true) {
+                            rounds[i].duplicate = true;
+                            duplicateFound = true;
+                        }
+                    }
+                    // handle duplicates if needed
+                    if (duplicateFound) {
+                        var dups = rounds.filter(function(round){ return round.duplicate; });
+                        logger.warning(logSystem, logComponent, 'Duplicate pending blocks found: ' + JSON.stringify(dups));
+                        // attempt to find the invalid duplicates
+                        var rpcDupCheck = dups.map(function(r){
+                            return ['getblock', [r.blockHash]];
+                        });
+                        startRPCTimer();
+                        daemon.batchCmd(rpcDupCheck, function(error, blocks){
+                            endRPCTimer();
+                            if (error || !blocks) {
+                                logger.error(logSystem, logComponent, 'Error with duplicate block check rpc call getblock ' + JSON.stringify(error));
+                                return;
+                            }
+                            // look for the invalid duplicate block
+                            var validBlocks = {}; // hashtable for unique look up
+                            var invalidBlocks = []; // array for redis work
+                            blocks.forEach(function(block, i) {
+                                if (block && block.result) {
+                                    // invalid duplicate submit blocks have negative confirmations
+                                    if (block.result.confirmations < 0) {
+                                        logger.warning(logSystem, logComponent, 'Remove invalid duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                        // move from blocksPending to blocksDuplicate...
+                                        invalidBlocks.push(['smove', coin + ':blocksPending', coin + ':blocksDuplicate', dups[i].serialized]);
+                                    } else {
+                                        // block must be valid, make sure it is unique
+                                        if (validBlocks.hasOwnProperty(dups[i].blockHash)) {
+                                            // not unique duplicate block
+                                            logger.warning(logSystem, logComponent, 'Remove non-unique duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                            // move from blocksPending to blocksDuplicate...
+                                            invalidBlocks.push(['smove', coin + ':blocksPending', coin + ':blocksDuplicate', dups[i].serialized]);                                            
+                                        } else {
+                                            // keep unique valid block
+                                            validBlocks[dups[i].blockHash] = dups[i].serialized;
+                                            logger.debug(logSystem, logComponent, 'Keep valid duplicate block ' + block.result.height + ' > ' + block.result.hash);
+                                        }
+                                    }
+                                }
+                            });
+                            // filter out all duplicates to prevent double payments
+                            rounds = rounds.filter(function(round){ return !round.duplicate; });
+                            // if we detected the invalid duplicates, move them
+                            if (invalidBlocks.length > 0) {                                
+                                // move invalid duplicate blocks in redis
+                                startRedisTimer();
+                                redisClient.multi(invalidBlocks).exec(function(error, kicked){
+                                    endRedisTimer();
+                                    if (error) {
+                                        logger.error(logSystem, logComponent, 'Error could not move invalid duplicate blocks in redis ' + JSON.stringify(error));
+                                    }
+                                    // continue payments normally
                     callback(null, workers, rounds);
+                });
+                            } else {
+                                // notify pool owner that we are unable to find the invalid duplicate blocks, manual intervention required...
+                                logger.error(logSystem, logComponent, 'Unable to detect invalid duplicate blocks, duplicate block payments on hold.');
+                                // continue payments normally
+                                callback(null, workers, rounds);                                
+                            }
+                        });
+                    } else {
+                        // no duplicates, continue payments normally
+                        callback(null, workers, rounds);
+                    }
                 });
             },
 
@@ -716,6 +790,4 @@ function SetupForPool(poolOptions, setupFinished){
         }
         else return address;
     };
-
-
 }

@@ -382,9 +382,9 @@ module.exports = function (portalConfig, poolConfigs) {
                 ['scard', ':blocksPending'],
                 ['scard', ':blocksConfirmed'],
                 ['scard', ':blocksKicked'],
-		['smembers', ':blocksPending'],
-		['smembers', ':blocksConfirmed'],
-		['hgetall', ':shares:roundCurrent'],
+				['smembers', ':blocksPending'],
+				['smembers', ':blocksConfirmed'],
+				['hgetall', ':shares:roundCurrent'],
                 ['hgetall', ':blocksPendingConfirms'],
                 ['zrange', ':payments', -100, -1],
                 ['hgetall', ':shares:timesCurrent']
