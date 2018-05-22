@@ -1,12 +1,12 @@
-var fs = require('fs');
-var path = require('path');
-var os = require('os');
-var cluster = require('cluster');
+var fs = require("fs");
+var path = require("path");
+var os = require("os");
+var cluster = require("cluster");
 
-var async = require('async');
-var extend = require('extend');
+var async = require("async");
+var extend = require("extend");
 
-var redis = require('redis');
+var redis = require("redis");
 
 
 var CliListener = require('./libs/cliListener.js');
@@ -34,9 +34,9 @@ var poolConfigs;
 try {
     require('newrelic');
     if (cluster.isMaster)
-        logger.debug('New Relic initiated');
+        logger.debug("New Relic initiated");
 } catch (e) {
-	logger.debug('New Relic not available');
+	logger.debug("New Relic not available");
 }
 
 
