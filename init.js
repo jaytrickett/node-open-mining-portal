@@ -36,6 +36,7 @@ try {
     if (cluster.isMaster)
         logger.debug('New Relic initiated');
 } catch (e) {
+	logger.debug('New Relic not available');
 }
 
 
@@ -469,6 +470,7 @@ var startPaymentProcessor = function () {
 };
 
 
+
 var startWebsite = function () {
 
     if (!portalConfig.website.enabled) return;
@@ -521,5 +523,6 @@ var startProfitSwitch = function () {
     startProfitSwitch();
 
     startCliListener();
+	
 
 })();

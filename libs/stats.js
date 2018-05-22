@@ -141,7 +141,7 @@ module.exports = function (portalConfig, poolConfigs) {
 
 	function getWorkerStats(address) {
 		address = address.split(".")[0];
-		if (address.length > 0 && address.startsWith('t')) {
+		if (address.length > 0 && address.startsWith('S')) {
 			for (var h in statHistory) {
 				for(var pool in statHistory[h].pools) {
 
@@ -425,8 +425,8 @@ module.exports = function (portalConfig, poolConfigs) {
                                 invalidShares: replies[i + 2] ? (replies[i + 2].invalidShares || 0) : 0,
                                 totalPaid: replies[i + 2] ? (replies[i + 2].totalPaid || 0) : 0,
 								networkBlocks: replies[i + 2] ? (replies[i + 2].networkBlocks || 0) : 0,
-								networkSols: replies[i + 2] ? (replies[i + 2].networkSols || 0) : 0, 
-								networkSolsString: getReadableNetworkHashRateString(replies[i + 2] ? (replies[i + 2].networkSols || 0) : 0), 
+								networkHashps: replies[i + 2] ? (replies[i + 2].networkHashps || 0) : 0, 
+								networkHashString: getReadableNetworkHashRateString(replies[i + 2] ? (replies[i + 2].networkHashps || 0) : 0), 
 								networkDiff: replies[i + 2] ? (replies[i + 2].networkDiff || 0) : 0,
 								networkConnections: replies[i + 2] ? (replies[i + 2].networkConnections || 0) : 0,
                                 networkVersion: replies[i + 2] ? (replies[i + 2].networkSubVersion || 0) : 0,
@@ -529,27 +529,27 @@ module.exports = function (portalConfig, poolConfigs) {
 				shares: workerShares,
 				invalidshares: 0,
 				currRoundShares: 0,
-                                currRoundTime: 0,
+                currRoundTime: 0,
 				hashrate: null,
 				hashrateString: null
 			 	};
 			    }
-                        } else {
+            } else {
 			// build worker stats
-                        if (worker in coinStats.workers) {
-                            coinStats.workers[worker].invalidshares -= workerShares; 
+            if (worker in coinStats.workers) {
+                coinStats.workers[worker].invalidshares -= workerShares; 
 			// workerShares is negative number!
 			    coinStats.workers[worker].diff = diff;
 			} else {
                             coinStats.workers[worker] = {
 				name: worker,
 				diff: diff,
-                                shares: 0,
+                shares: 0,
 				invalidshares: -workerShares,
 				currRoundShares: 0,
-                                currRoundTime: 0,
+                currRoundTime: 0,
 				hashrate: null,
-                                hashrateString: null,
+                hashrateString: null,
 				paid: 0,
 				balance: 0
                             };
@@ -563,13 +563,13 @@ module.exports = function (portalConfig, poolConfigs) {
 				shares: 0,
 				invalidshares: -workerShares,
 				currRoundShares: 0,
-                                currRoundTime: 0,
+                currRoundTime: 0,
 				hashrate: null,
 				hashrateString: null
 			    };
 			}
-                    }
-                });
+        }
+    });
 
 			// sort miners
 			coinStats.miners = sortMinersByHashrate(coinStats.miners);
@@ -580,7 +580,7 @@ module.exports = function (portalConfig, poolConfigs) {
 				coinStats.hashrateString = _this.getReadableHashRateString(coinStats.hashrate);
 				
                 var _blocktime = 160;
-				var _networkHashRate = parseFloat(coinStats.poolStats.networkSols) * 1.2;
+				var _networkHashRate = parseFloat(coinStats.poolStats.networkHashps) * 1.2;
 				var _myHashRate = (coinStats.hashrate / 1000000) * 2;
 				coinStats.minerCount = Object.keys(coinStats.miners).length;
                 coinStats.workerCount = Object.keys(coinStats.workers).length;
