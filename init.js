@@ -9,16 +9,16 @@ var extend = require("extend");
 var redis = require("redis");
 
 
-var CliListener = require('./libs/cliListener.js');
-var PoolWorker = require('./libs/poolWorker.js');
-var PaymentProcessor = require('./libs/paymentProcessor.js');
-var Website = require('./libs/website.js');
-var ProfitSwitch = require('./libs/profitSwitch.js');
+var CliListener = require("./libs/cliListener.js");
+var PoolWorker = require("./libs/poolWorker.js");
+var PaymentProcessor = require("./libs/paymentProcessor.js");
+var Website = require("./libs/website.js");
+var ProfitSwitch = require("./libs/profitSwitch.js");
 
-const loggerFactory = require('./libs/logger.js');
-const logger = loggerFactory.getLogger('init.js', 'system');
+const loggerFactory = require("./libs/logger.js");
+const logger = loggerFactory.getLogger("init.js', 'system");
 
-var algos = require('stratum-pool/lib/algoProperties.js');
+var algos = require("stratum-pool/lib/algoProperties.js");
 
 JSON.minify = JSON.minify || require("node-json-minify");
 
@@ -42,9 +42,9 @@ try {
 
 //Try to give process ability to handle 100k concurrent connections
 try {
-    var posix = require('posix');
+    var posix = require("posix");
     try {
-        posix.setrlimit('nofile', {soft: 100000, hard: 100000});
+        posix.setrlimit("nofile", {soft: 100000, hard: 100000});
     }
     catch (e) {
         if (cluster.isMaster) {
@@ -91,7 +91,7 @@ if (cluster.isWorker) {
 //Read all pool configs from pool_configs and join them with their coin profile
 var buildPoolConfigs = function () {
     var configs = {};
-    var configDir = 'pool_configs/';
+    var configDir = "pool_configs/";
 
     var poolConfigFiles = [];
 
@@ -114,14 +114,14 @@ var buildPoolConfigs = function () {
             var portsF = Object.keys(poolConfigFiles[f].ports);
             for (var g = 0; g < portsF.length; g++) {
                 if (ports.indexOf(portsF[g]) !== -1) {
-                    logger.error(poolConfigFiles[f].fileName, 'Has same configured port of ' + portsF[g] + ' as ' + poolConfigFiles[i].fileName);
+                    logger.error(poolConfigFiles[f].fileName, "Has same configured port of " + portsF[g] + " as " + poolConfigFiles[i].fileName);
                     process.exit(1);
                     return;
                 }
             }
 
             if (poolConfigFiles[f].coin === poolConfigFiles[i].coin) {
-                logger.error(poolConfigFiles[f].fileName, 'Pool has same configured coin file coins/' + poolConfigFiles[f].coin + ' as ' + poolConfigFiles[i].fileName + ' pool');
+                logger.error(poolConfigFiles[f].fileName, "Pool has same configured coin file coins/" + poolConfigFiles[f].coin + " as " + poolConfigFiles[i].fileName + " pool");
                 process.exit(1);
                 return;
             }
@@ -136,11 +136,11 @@ var buildPoolConfigs = function () {
 
         var coinFilePath = 'coins/' + poolOptions.coinFileName;
         if (!fs.existsSync(coinFilePath)) {
-            logger.error('[%s] could not find file %s ', poolOptions.coinFileName, coinFilePath);
+            logger.error("[%s] could not find file %s ", poolOptions.coinFileName, coinFilePath);
             return;
         }
 
-        var coinProfile = JSON.parse(JSON.minify(fs.readFileSync(coinFilePath, {encoding: 'utf8'})));
+        var coinProfile = JSON.parse(JSON.minify(fs.readFileSync(coinFilePath, {encoding: "utf8"})));
         poolOptions.coin = coinProfile;
         poolOptions.coin.name = poolOptions.coin.name.toLowerCase();
 
