@@ -1,5 +1,6 @@
 {
     "name": "Soferox",
     "symbol": "SFX",
-    "algorithm": "scrypt"
+    "algorithm": "scrypt",
+    "requireShielding": "false"
 }

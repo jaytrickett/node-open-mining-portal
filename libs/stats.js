@@ -58,6 +58,8 @@ module.exports = function (portalConfig, poolConfigs) {
 
     var _this = this;
 
+    var logSystem = 'Stats';
+
     var redisClients = [];
     var redisStats;
 
@@ -472,9 +474,9 @@ module.exports = function (portalConfig, poolConfigs) {
                     callback();
                 }
             });
-        }, function (err) {
-            if (err) {
-                logger.error('Error getting all stats, err = %s', JSON.stringify(err));
+        }, function(err){
+            if (err){
+                logger.error(logSystem, 'Global', 'error getting all stats' + JSON.stringify(err));
                 callback();
                 return;
             }

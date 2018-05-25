@@ -37,7 +37,7 @@ module.exports = function () {
         'index.html': 'index',
         'home.html': '',
         'getting_started.html': 'getting_started',
-        'stats.html': 'stats',
+        'blocks.html': 'blocks',
         'tbs.html': 'tbs',
         'workers.html': 'workers',
         'api.html': 'api',

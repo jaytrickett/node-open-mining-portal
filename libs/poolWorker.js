@@ -223,25 +223,29 @@ module.exports = function () {
             }
             if (isValidShare) {
                 if (data.shareDiff > 1000000000) {
-                    logger.warn('Share was found with diff higher than 1.000.000.000!');
+                    logger.debug('Share was found with diff higher than 1.000.000.000!');
                 }
                 else if (data.shareDiff > 1000000) {
-                    logger.warn('Share was found with diff higher than 1.000.000!');
+                    logger.debug('Share was found with diff higher than 1.000.000!');
                 }
                 logger.info('Share accepted at diff %s/%s by %s [%s]', data.difficulty, data.shareDiff, data.worker, data.ip);
 
             } else if (!isValidShare) {
                 logger.info('Share rejected: ' + shareDataJsonStr);
             }
-
-            handlers.share(isValidShare, isValidBlock, data)
-
+            
+            // handle the share
+            handlers.share(isValidShare, isValidBlock, data);
+            
+            // send to master for pplnt time tracking
+            process.send({type: 'shareTrack', thread:(parseInt(forkId)+1), coin:poolOptions.coin.name, isValidShare:isValidShare, isValidBlock:isValidBlock, data:data});
 
         }).on('difficultyUpdate', function (workerName, diff) {
             logger.info('Difficulty update to diff %s workerName = %s', JSON.stringify(workerName));
-            handlers.diff(workerName, diff);
+            handlers.diff(diff, workerName);
         }).on('log', function (severity, text) {
             logger.info(text);
+
         }).on('banIP', function (ip, worker) {
             process.send({type: 'banIP', ip: ip});
         }).on('started', function () {

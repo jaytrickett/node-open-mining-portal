@@ -1,20 +1,24 @@
-var fs = require('fs');
-var path = require('path');
-var os = require('os');
-var cluster = require('cluster');
+var fs = require("fs");
+var path = require("path");
+var os = require("os");
+var cluster = require("cluster");
 
-var async = require('async');
+var async = require("async");
+var extend = require("extend");
 
-var CliListener = require('./libs/cliListener.js');
-var PoolWorker = require('./libs/poolWorker.js');
-var PaymentProcessor = require('./libs/paymentProcessor.js');
-var Website = require('./libs/website.js');
-var ProfitSwitch = require('./libs/profitSwitch.js');
+var redis = require("redis");
 
-const loggerFactory = require('./libs/logger.js');
-const logger = loggerFactory.getLogger('init.js', 'system');
 
-var algos = require('stratum-pool/lib/algoProperties.js');
+var CliListener = require("./libs/cliListener.js");
+var PoolWorker = require("./libs/poolWorker.js");
+var PaymentProcessor = require("./libs/paymentProcessor.js");
+var Website = require("./libs/website.js");
+var ProfitSwitch = require("./libs/profitSwitch.js");
+
+const loggerFactory = require("./libs/logger.js");
+const logger = loggerFactory.getLogger("init.js', 'system");
+
+var algos = require("stratum-pool/lib/algoProperties.js");
 
 JSON.minify = JSON.minify || require("node-json-minify");
 
@@ -30,20 +34,21 @@ var poolConfigs;
 try {
     require('newrelic');
     if (cluster.isMaster)
-        logger.debug('New Relic initiated');
+        logger.debug("New Relic initiated");
 } catch (e) {
+	logger.debug("New Relic not available");
 }
 
 
 //Try to give process ability to handle 100k concurrent connections
 try {
-    var posix = require('posix');
+    var posix = require("posix");
     try {
-        posix.setrlimit('nofile', {soft: 100000, hard: 100000});
+        posix.setrlimit("nofile", {soft: 100000, hard: 100000});
     }
     catch (e) {
         if (cluster.isMaster) {
-            logger.warn('POSIX Connection Limit (Safe to ignore) Must be ran as root to increase resource limits');
+            logger.debug('POSIX Connection Limit (Safe to ignore) Must be ran as root to increase resource limits');
         }
     }
     finally {
@@ -62,7 +67,6 @@ catch (e) {
     }
 }
 
-
 if (cluster.isWorker) {
 
     switch (process.env.workerType) {
@@ -75,9 +79,9 @@ if (cluster.isWorker) {
         case 'website':
             new Website();
             break;
-//        case 'profitSwitch':
-//            new ProfitSwitch();
-//            break;
+        case 'profitSwitch':
+            new ProfitSwitch();
+            break;
     }
 
     return;
@@ -87,7 +91,7 @@ if (cluster.isWorker) {
 //Read all pool configs from pool_configs and join them with their coin profile
 var buildPoolConfigs = function () {
     var configs = {};
-    var configDir = 'pool_configs/';
+    var configDir = "pool_configs/";
 
     var poolConfigFiles = [];
 
@@ -110,14 +114,14 @@ var buildPoolConfigs = function () {
             var portsF = Object.keys(poolConfigFiles[f].ports);
             for (var g = 0; g < portsF.length; g++) {
                 if (ports.indexOf(portsF[g]) !== -1) {
-                    logger.error(poolConfigFiles[f].fileName, 'Has same configured port of ' + portsF[g] + ' as ' + poolConfigFiles[i].fileName);
+                    logger.error(poolConfigFiles[f].fileName, "Has same configured port of " + portsF[g] + " as " + poolConfigFiles[i].fileName);
                     process.exit(1);
                     return;
                 }
             }
 
             if (poolConfigFiles[f].coin === poolConfigFiles[i].coin) {
-                logger.error(poolConfigFiles[f].fileName, 'Pool has same configured coin file coins/' + poolConfigFiles[f].coin + ' as ' + poolConfigFiles[i].fileName + ' pool');
+                logger.error(poolConfigFiles[f].fileName, "Pool has same configured coin file coins/" + poolConfigFiles[f].coin + " as " + poolConfigFiles[i].fileName + " pool");
                 process.exit(1);
                 return;
             }
@@ -132,11 +136,11 @@ var buildPoolConfigs = function () {
 
         var coinFilePath = 'coins/' + poolOptions.coinFileName;
         if (!fs.existsSync(coinFilePath)) {
-            logger.error('[%s] could not find file %s ', poolOptions.coinFileName, coinFilePath);
+            logger.error("[%s] could not find file %s ", poolOptions.coinFileName, coinFilePath);
             return;
         }
 
-        var coinProfile = JSON.parse(JSON.minify(fs.readFileSync(coinFilePath, {encoding: 'utf8'})));
+        var coinProfile = JSON.parse(JSON.minify(fs.readFileSync(coinFilePath, {encoding: "utf8"})));
         poolOptions.coin = coinProfile;
         poolOptions.coin.name = poolOptions.coin.name.toLowerCase();
 
@@ -152,15 +156,14 @@ var buildPoolConfigs = function () {
             return;
         }
 
-        for (var option in portalConfig.defaultPoolConfigs) {
-            if (!(option in poolOptions)) {
+        for (var option in portalConfig.defaultPoolConfigs){
+            if (!(option in poolOptions)){
                 var toCloneOption = portalConfig.defaultPoolConfigs[option];
                 var clonedOption = {};
-                if (toCloneOption.constructor === Object) {
-                    Object.assign(clonedOption, toCloneOption);
-                } else {
+                if (toCloneOption.constructor === Object)
+                    extend(true, clonedOption, toCloneOption);
+                else
                     clonedOption = toCloneOption;
-                }
                 poolOptions[option] = clonedOption;
             }
         }
@@ -177,20 +180,41 @@ var buildPoolConfigs = function () {
     return configs;
 };
 
+function roundTo(n, digits) {
+    if (digits === undefined) {
+        digits = 0;
+    }
+    var multiplicator = Math.pow(10, digits);
+    n = parseFloat((n * multiplicator).toFixed(11));
+    var test =(Math.round(n) / multiplicator);
+    return +(test.toFixed(digits));
+}
 
-var spawnPoolWorkers = function () {
+var _lastStartTimes = [];
+var _lastShareTimes = [];
 
-    Object.keys(poolConfigs).forEach(function (coin) {
-        var p = poolConfigs[coin];
+var spawnPoolWorkers = function(){
 
-        if (!Array.isArray(p.daemons) || p.daemons.length < 1) {
-            logger.error('[%s] No daemons configured so a pool cannot be started for this coin.', coin);
+    var redisConfig;
+    var connection;
+    
+    Object.keys(poolConfigs).forEach(function(coin){
+        var pcfg = poolConfigs[coin];
+        if (!Array.isArray(pcfg.daemons) || pcfg.daemons.length < 1){
+            logger.error('Master', coin, 'No daemons configured so a pool cannot be started for this coin.');
             delete poolConfigs[coin];
+        } else if (!connection) {
+            redisConfig = pcfg.redis;
+            connection = redis.createClient(redisConfig.port, redisConfig.host);
+            connection.on('ready', function(){
+                logger.debug('PPLNT', coin, 'TimeShare processing setup with redis (' + redisConfig.host +
+                    ':' + redisConfig.port  + ')');
+            });
         }
     });
 
     if (Object.keys(poolConfigs).length === 0) {
-        logger.warn('PoolSpawner: No pool configs exists or are enabled in pool_configs folder. No pools spawned.');
+        logger.debug('PoolSpawner: No pool configs exists or are enabled in pool_configs folder. No pools spawned.');
         return;
     }
 
@@ -198,15 +222,12 @@ var spawnPoolWorkers = function () {
     var serializedConfigs = JSON.stringify(poolConfigs);
 
     var numForks = (function () {
-        if (!portalConfig.clustering || !portalConfig.clustering.enabled) {
+        if (!portalConfig.clustering || !portalConfig.clustering.enabled)
             return 1;
-        }
-        if (portalConfig.clustering.forks === 'auto') {
+        if (portalConfig.clustering.forks === 'auto')
             return os.cpus().length;
-        }
-        if (!portalConfig.clustering.forks || isNaN(portalConfig.clustering.forks)) {
+        if (!portalConfig.clustering.forks || isNaN(portalConfig.clustering.forks)) 
             return 1;
-        }
         return portalConfig.clustering.forks;
     })();
 
@@ -235,6 +256,62 @@ var spawnPoolWorkers = function () {
                             cluster.workers[id].send({type: 'banIP', ip: msg.ip});
                         }
                     });
+                    break;
+                case 'shareTrack':
+                    // pplnt time share tracking of workers
+                    if (msg.isValidShare && !msg.isValidBlock) {
+                        var now = Date.now();
+                        var lastShareTime = now;
+                        var lastStartTime = now;
+                        var workerAddress = msg.data.worker.split('.')[0];
+                        
+                        // if needed, initialize PPLNT objects for coin
+                        if (!_lastShareTimes[msg.coin]) {
+                            _lastShareTimes[msg.coin] = {};
+                        }
+                        if (!_lastStartTimes[msg.coin]) {
+                            _lastStartTimes[msg.coin] = {};
+                        }
+                        
+                        // did they just join in this round?
+                        if (!_lastShareTimes[msg.coin][workerAddress] || !_lastStartTimes[msg.coin][workerAddress]) {
+                            _lastShareTimes[msg.coin][workerAddress] = now;
+                            _lastStartTimes[msg.coin][workerAddress] = now;
+                            logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+' joined.');
+                        }
+                        // grab last times from memory objects
+                        if (_lastShareTimes[msg.coin][workerAddress] != null && _lastShareTimes[msg.coin][workerAddress] > 0) {
+                            lastShareTime = _lastShareTimes[msg.coin][workerAddress];
+                            lastStartTime = _lastStartTimes[msg.coin][workerAddress];
+                        }
+                        
+                        var redisCommands = [];
+                        
+                        // if its been less than 15 minutes since last share was submitted
+                        var timeChangeSec = roundTo(Math.max(now - lastShareTime, 0) / 1000, 4);
+                        var timeChangeTotal = roundTo(Math.max(now - lastStartTime, 0) / 1000, 4);
+                        if (timeChangeSec < 900) {
+                            // loyal miner keeps mining :)
+                            redisCommands.push(['hincrbyfloat', msg.coin + ':shares:timesCurrent', workerAddress + "." + poolConfigs[msg.coin].poolId, timeChangeSec]);                            
+                            logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+':{totalTimeSec:'+timeChangeTotal+', timeChangeSec:'+timeChangeSec+'}');
+                            connection.multi(redisCommands).exec(function(err, replies){
+                                if (err)
+                                    logger.error('PPLNT', msg.coin, 'Thread '+msg.thread, 'Error with time share processor call to redis ' + JSON.stringify(err));
+                            });
+                        } else {
+                            // they just re-joined the pool
+                            _lastStartTimes[workerAddress] = now;
+                            logger.debug('PPLNT', msg.coin, 'Thread '+msg.thread, workerAddress+' re-joined.');
+                        }
+                        
+                        // track last time share
+                        _lastShareTimes[msg.coin][workerAddress] = now;
+                    }
+                    if (msg.isValidBlock) {
+                        // reset pplnt share times for next round
+                        _lastShareTimes[msg.coin] = {};
+                        _lastStartTimes[msg.coin] = {};
+                    }
                     break;
             }
         });
@@ -393,6 +470,7 @@ var startPaymentProcessor = function () {
 };
 
 
+
 var startWebsite = function () {
 
     if (!portalConfig.website.enabled) return;
@@ -445,5 +523,6 @@ var startProfitSwitch = function () {
     startProfitSwitch();
 
     startCliListener();
+	
 
 })();
